@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SourceType {
+  rss
+  reddit
+  github
+  feedly
+  status
+}
+
+enum Severity {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model Source {
+  id           String     @id @default(uuid())
+  name         String
+  url          String
+  type         SourceType
+  enabled      Boolean    @default(true)
+  /// Poll interval in seconds for this source.
+  pollInterval Int        @default(300)
+  lastPolledAt DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  articles     Article[]
+
+  @@unique([type, url])
+}
+
+model Article {
+  id          String   @id @default(uuid())
+  url         String   @unique
+  title       String
+  publishedAt DateTime
+  /// Hash of the normalized content; used for Level 1 deduplication.
+  contentHash String
+  /// Raw body/summary captured from the source (e.g. RSS content:encoded).
+  rawContent  String?
+  /// Clean, normalized article text ready for classification (filled by the extractor).
+  content     String?
+  sourceId    String
+  source      Source   @relation(fields: [sourceId], references: [id])
+  processed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  alerts      Alert[]
+
+  @@index([contentHash])
+  @@index([sourceId])
+}
+
+model Alert {
+  id             String   @id @default(uuid())
+  articleId      String
+  article        Article  @relation(fields: [articleId], references: [id])
+  severity       Severity
+  category       String
+  summary        String
+  impact         String
+  actionRequired String
+  deadline       String?
+  confidence     Int?
+  reasoning      String?
+  tags           String[] @default([])
+  /// Names of all sources that reported this event (for merged events).
+  reportedBy     String[] @default([])
+  sentSlack      Boolean  @default(false)
+  sentEmail      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+}
