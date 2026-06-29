@@ -45,3 +45,30 @@ export async function setArticleContent(
     data: { content },
   });
 }
+
+/** Articles with extracted content that have not been classified yet. */
+export async function getArticlesPendingClassification(limit: number) {
+  return prisma.article.findMany({
+    where: {
+      processed: false,
+      content: { not: null },
+    },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    select: {
+      id: true,
+      url: true,
+      title: true,
+      publishedAt: true,
+      content: true,
+      source: { select: { name: true } },
+    },
+  });
+}
+
+export async function markArticleProcessed(id: string): Promise<void> {
+  await prisma.article.update({
+    where: { id },
+    data: { processed: true },
+  });
+}

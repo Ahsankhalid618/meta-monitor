@@ -20,6 +20,7 @@
     "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@mozilla/readability": "^0.6.0",
     "@octokit/rest": "^22.0.1",
     "@prisma/adapter-pg": "^7.8.0",

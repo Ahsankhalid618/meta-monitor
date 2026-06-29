@@ -4,6 +4,8 @@ import { logger } from "../utils/logger.js";
 import { config } from "../config/index.js";
 import { runPollCycle } from "../cron/pollCycle.js";
 import { extractPendingArticles } from "../processors/extractor/runExtraction.js";
+import { classifyPendingArticles } from "../processors/classifier/runClassification.js";
+import { deliverPendingAlerts } from "../processors/formatter/deliverAlerts.js";
 
 export function createServer(): Express {
   const app = express();
@@ -43,6 +45,28 @@ export function createServer(): Express {
       res.status(200).json({ status: "ok", ...result });
     } catch (err) {
       logger.error({ err }, "Manual extraction failed");
+      res.status(500).json({ status: "error" });
+    }
+  });
+
+  // Manual trigger to classify unprocessed articles via Gemini.
+  app.post("/classify", async (_req: Request, res: Response) => {
+    try {
+      const result = await classifyPendingArticles();
+      res.status(200).json({ status: "ok", ...result });
+    } catch (err) {
+      logger.error({ err }, "Manual classification failed");
+      res.status(500).json({ status: "error" });
+    }
+  });
+
+  // Manual trigger to deliver pending alerts to Slack + Email.
+  app.post("/notify", async (_req: Request, res: Response) => {
+    try {
+      const result = await deliverPendingAlerts();
+      res.status(200).json({ status: "ok", ...result });
+    } catch (err) {
+      logger.error({ err }, "Manual notification delivery failed");
       res.status(500).json({ status: "error" });
     }
   });

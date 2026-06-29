@@ -18,6 +18,7 @@ const envSchema = z.object({
     .transform((v) => v === "true"),
 
   GEMINI_API_KEY: z.string().default(""),
+  GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
 
   SLACK_WEBHOOK_URL: z.string().default(""),
   RESEND_API_KEY: z.string().default(""),
