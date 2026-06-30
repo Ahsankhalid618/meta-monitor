@@ -31,7 +31,7 @@ export const SEVERITIES = ["HIGH", "MEDIUM", "LOW"] as const;
 export type SeverityLevel = (typeof SEVERITIES)[number];
 
 /**
- * Strict schema for Gemini's JSON output. See docs/04-gemini-classification.md.
+ * Strict schema for LLM JSON output. See docs/04-gemini-classification.md.
  * Gemini returns either { relevant: false } or the full relevant payload.
  */
 export const classificationSchema = z.discriminatedUnion("relevant", [

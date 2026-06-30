@@ -6,7 +6,11 @@ import {
 import { insertArticles } from "../database/articles.js";
 import { dedupeArticles } from "../services/deduplication/index.js";
 import { extractPendingArticles } from "../processors/extractor/runExtraction.js";
-import { classifyPendingArticles } from "../processors/classifier/runClassification.js";
+import {
+  classifyPendingArticles,
+  markAutoClassifyRan,
+  shouldAutoClassify,
+} from "../processors/classifier/runClassification.js";
 import { deliverPendingAlerts } from "../processors/formatter/deliverAlerts.js";
 import { getCollector } from "../collectors/index.js";
 import { logger } from "../utils/logger.js";
@@ -111,10 +115,18 @@ export async function runPollCycle(
     const extraction = await extractPendingArticles();
     result.contentExtracted = extraction.extracted;
 
-    const classification = await classifyPendingArticles();
-    result.articlesClassified = classification.processed;
-    result.alertsCreated = classification.alertsCreated;
-    result.alertsMerged = classification.alertsMerged;
+    const newContent =
+      result.articlesSaved > 0 || extraction.extracted > 0;
+
+    if (shouldAutoClassify(newContent)) {
+      markAutoClassifyRan();
+      const classification = await classifyPendingArticles();
+      result.articlesClassified = classification.processed;
+      result.alertsCreated = classification.alertsCreated;
+      result.alertsMerged = classification.alertsMerged;
+    } else {
+      logger.debug("Skipping auto-classify (interval/cooldown or no new content)");
+    }
 
     const delivery = await deliverPendingAlerts();
     result.slackSent = delivery.slackSent;

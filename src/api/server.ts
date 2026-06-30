@@ -49,10 +49,17 @@ export function createServer(): Express {
     }
   });
 
-  // Manual trigger to classify unprocessed articles via Gemini.
-  app.post("/classify", async (_req: Request, res: Response) => {
+  // Manual trigger to classify unprocessed articles via Groq.
+  app.post("/classify", async (req: Request, res: Response) => {
     try {
-      const result = await classifyPendingArticles();
+      const force = req.query.force === "true";
+      const limitParam = req.query.limit;
+      const limit =
+        typeof limitParam === "string" ? Number.parseInt(limitParam, 10) : undefined;
+      const result = await classifyPendingArticles({
+        force,
+        limit: Number.isFinite(limit) ? limit : undefined,
+      });
       res.status(200).json({ status: "ok", ...result });
     } catch (err) {
       logger.error({ err }, "Manual classification failed");

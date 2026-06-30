@@ -1,5 +1,7 @@
+import { config } from "../../config/index.js";
+
 /**
- * System prompt for Gemini acting as AutoSetter's Senior Platform Engineer.
+ * System prompt for the LLM acting as AutoSetter's Senior Platform Engineer.
  * See docs/04-gemini-classification.md.
  */
 export const CLASSIFIER_SYSTEM_PROMPT = `You are AutoSetter's Senior Platform Engineer.
@@ -68,9 +70,10 @@ export function buildClassifierUserPrompt(input: {
   publishedAt: Date;
   content: string;
 }): string {
+  const maxChars = config.LLM_MAX_CONTENT_CHARS;
   const truncated =
-    input.content.length > 12000
-      ? `${input.content.slice(0, 12000)}\n\n[truncated]`
+    input.content.length > maxChars
+      ? `${input.content.slice(0, maxChars)}\n\n[truncated]`
       : input.content;
 
   return `Source: ${input.sourceName}

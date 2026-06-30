@@ -17,8 +17,18 @@ const envSchema = z.object({
     .default("false")
     .transform((v) => v === "true"),
 
-  GEMINI_API_KEY: z.string().default(""),
-  GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
+  GROQ_API_KEY: z.string().default(""),
+  GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"),
+  /** Pause between classify requests to avoid burst rate limits (ms). */
+  LLM_CLASSIFY_DELAY_MS: z.coerce.number().int().nonnegative().default(2000),
+  /** Max article chars sent to the LLM. */
+  LLM_MAX_CONTENT_CHARS: z.coerce.number().int().positive().default(4000),
+  /** Max articles per classify invocation. */
+  LLM_CLASSIFY_BATCH: z.coerce.number().int().positive().default(1),
+  /** After a 429, stop calling the LLM for this many ms. */
+  LLM_QUOTA_COOLDOWN_MS: z.coerce.number().int().positive().default(900_000),
+  /** Min ms between automatic backlog classify runs. */
+  LLM_CLASSIFY_INTERVAL_MS: z.coerce.number().int().positive().default(300_000),
 
   SLACK_WEBHOOK_URL: z.string().default(""),
   RESEND_API_KEY: z.string().default(""),
