@@ -1,53 +1,64 @@
 # 07 · Database Schema
 
-**Database:** PostgreSQL · **ORM:** Prisma
+**Database:** PostgreSQL · **ORM:** Prisma 7 (driver adapter `@prisma/adapter-pg`)
 
-Three core tables drive the system: `Sources`, `Articles`, and `Alerts`.
+Three core tables: `Sources`, `Articles`, `Alerts`.
 
 ## Tables
 
 ### Sources
 
-Configured feeds the service monitors. Managed by the administrator.
+Configured feeds the service monitors.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `id` | string / uuid | Primary key |
-| `name` | string | Human-readable source name (e.g. "Facebook Developers") |
-| `url` | string | Feed / endpoint URL |
-| `type` | enum | `rss` \| `reddit` \| `github` \| `feedly` \| `status` |
-| `enabled` | boolean | Skip source when `false` |
-| `pollInterval` | int | Seconds/minutes between polls for this source |
+| `id` | uuid | Primary key |
+| `name` | string | Human-readable name |
+| `url` | string | Feed or index URL |
+| `type` | enum | `rss` \| `reddit` \| `github` \| `feedly` \| `status` \| `changelog` |
+| `enabled` | boolean | Skip when `false` |
+| `pollInterval` | int | Seconds between polls |
+| `lastPolledAt` | datetime? | Last successful poll |
+
+Unique: `(type, url)`
 
 ### Articles
 
-Every article the service has seen. Used for **Level 1 deduplication**.
+Every article seen. Used for **Level 1 deduplication**.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `id` | string / uuid | Primary key |
-| `url` | string | Canonical article URL (unique) |
-| `title` | string | Article title |
-| `publishedAt` | datetime | Publish timestamp |
-| `contentHash` | string | Hash of normalized content (dedup key) |
-| `sourceId` | string | FK → `Sources.id` |
-| `processed` | boolean | `true` once classified |
+| `id` | uuid | Primary key |
+| `url` | string | Unique canonical URL |
+| `title` | string | |
+| `publishedAt` | datetime | |
+| `contentHash` | string | Dedup key |
+| `rawContent` | string? | From collector |
+| `content` | string? | Extracted/normalized text |
+| `sourceId` | string | FK → Sources |
+| `processed` | boolean | `true` after classification |
 
 ### Alerts
 
-Structured, relevant alerts produced by Gemini classification.
+Structured relevant events from Groq classification.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `id` | string / uuid | Primary key |
-| `articleId` | string | FK → `Articles.id` |
+| `id` | uuid | Primary key |
+| `articleId` | string | FK → Articles |
 | `severity` | enum | `HIGH` \| `MEDIUM` \| `LOW` |
-| `category` | string | Affected area (e.g. "Instagram Graph API") |
-| `summary` | string | What changed |
-| `impact` | string | Why it matters |
-| `actionRequired` | string | What the team must do |
-| `sentSlack` | boolean | Slack delivery flag |
-| `sentEmail` | boolean | Email delivery flag |
+| `category` | string | |
+| `summary` | string | |
+| `impact` | string | |
+| `actionRequired` | string | |
+| `deadline` | string? | |
+| `confidence` | int? | 0–100 |
+| `reasoning` | string? | |
+| `tags` | string[] | |
+| `reportedBy` | string[] | Sources for merged events |
+| `sentSlack` | boolean | |
+| `sentEmail` | boolean | |
+| `createdAt` | datetime | |
 
 ## Relationships
 
@@ -55,70 +66,24 @@ Structured, relevant alerts produced by Gemini classification.
 Sources (1) ──────< (many) Articles (1) ──────< (many) Alerts
 ```
 
-- A `Source` has many `Articles`.
-- An `Article` has zero or one (or many, on merge) `Alerts`.
+## Migrations
 
-## Suggested Prisma schema
-
-> Extend as needed (e.g. store `confidence`, `reasoning`, `tags`, `deadline`, and the list
-> of reporting sources for merged events).
-
-```prisma
-enum SourceType {
-  rss
-  reddit
-  github
-  feedly
-  status
-}
-
-enum Severity {
-  HIGH
-  MEDIUM
-  LOW
-}
-
-model Source {
-  id           String     @id @default(uuid())
-  name         String
-  url          String
-  type         SourceType
-  enabled      Boolean    @default(true)
-  pollInterval Int        @default(300)
-  articles     Article[]
-}
-
-model Article {
-  id          String   @id @default(uuid())
-  url         String   @unique
-  title       String
-  publishedAt DateTime
-  contentHash String
-  sourceId    String
-  source      Source   @relation(fields: [sourceId], references: [id])
-  processed   Boolean  @default(false)
-  alerts      Alert[]
-
-  @@index([contentHash])
-}
-
-model Alert {
-  id             String   @id @default(uuid())
-  articleId      String
-  article        Article  @relation(fields: [articleId], references: [id])
-  severity       Severity
-  category       String
-  summary        String
-  impact         String
-  actionRequired String
-  sentSlack      Boolean  @default(false)
-  sentEmail      Boolean  @default(false)
-  createdAt      DateTime @default(now())
-}
+```bash
+pnpm exec prisma migrate deploy   # production
+pnpm prisma:migrate               # local dev
+pnpm db:seed                      # upsert sources
 ```
 
-## Indexing notes
+Schema file: `prisma/schema.prisma`
 
-- Unique index on `Articles.url` — fast Level 1 dedup by URL.
-- Index on `Articles.contentHash` — fast dedup by content hash.
-- Consider an index on `Alerts.createdAt` for the event-merge lookback window.
+## Indexing
+
+- Unique: `Articles.url`
+- Index: `Articles.contentHash`, `Articles.sourceId`
+- Index: `Alerts.createdAt`
+
+## Inspect data
+
+```bash
+pnpm prisma:studio
+```

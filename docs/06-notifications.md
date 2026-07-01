@@ -1,12 +1,13 @@
 # 06 · Notifications
 
-Relevant alerts are delivered to **Slack** and **Email**. Both render the same structured
-information; only the formatting differs. Delivery state is tracked per channel
-(`sentSlack`, `sentEmail`) for idempotent retries.
+Relevant alerts are delivered to **Slack** (primary in v1). **Email** is supported in code
+but disabled in production until a verified Resend domain is configured.
 
-## Slack message
+Delivery state is tracked per channel (`sentSlack`, `sentEmail`) for idempotent retries.
 
-Delivered via **Incoming Webhooks**. Example layout for a relevant alert:
+## Slack (v1 — active)
+
+Delivered via **Incoming Webhooks**.
 
 ```
 🚨 META WATCH
@@ -18,40 +19,23 @@ Category
 Instagram Graph API
 
 Source
-Facebook Developers
+Meta for Developers Blog
 
 Summary
-Meta introduced a new permission for Instagram Messaging API.
+Meta introduced Embedded Signup v4 with a migration deadline.
 
 Why it matters
-This may prevent newly connected accounts from sending automated DMs unless App Review is updated.
-
-Impact
-HIGH
+OAuth onboarding for Instagram accounts may break without migration.
 
 Required Action
-Review App Review permissions before September 30.
+Upgrade to Embedded Signup v4 before October 15, 2026.
 
 Confidence
-97%
+92%
 
 Source
-https://...
+https://developers.facebook.com/blog/post/2026/05/14/embedded-signup-v4/
 ```
-
-### Field mapping (Slack)
-
-| Slack field | Source |
-|-------------|--------|
-| Severity | `severity` (+ emoji 🔴/🟠/🟡) |
-| Category | `category` |
-| Source | reporting source name(s) |
-| Summary | `summary` |
-| Why it matters | `impact` |
-| Impact | `severity` |
-| Required Action | `action_required` |
-| Confidence | `confidence` |
-| Source (link) | article URL(s) |
 
 ### Severity → emoji
 
@@ -61,52 +45,38 @@ https://...
 | MEDIUM | 🟠 |
 | LOW | 🟡 |
 
-## Email
+Implementation: `src/services/slack/`
 
-Sent via **Resend** as **HTML**. The email must include:
+## Email (optional — disabled in v1)
 
-- **Severity** (with a severity color)
-- **Summary**
-- **Impact**
-- **Required Action**
-- **Deadline**
-- **Source**
+Sent via **Resend** as HTML when configured.
 
-### Severity → color
+**Requirements:**
+- `RESEND_API_KEY`
+- `ALERT_EMAIL_TO`
+- `ALERT_EMAIL_FROM` on a **verified custom domain** (not `@gmail.com`)
 
-| Severity | Color |
-|----------|-------|
-| HIGH | Red (`#e01e5a` / `#d32f2f`) |
-| MEDIUM | Orange (`#ed8936` / `#f57c00`) |
-| LOW | Yellow (`#ecb22e` / `#fbc02d`) |
+If Resend is misconfigured, email is silently skipped (`emailSkipped: true`).
 
-### Suggested HTML structure
-
-```html
-<div style="border-left: 6px solid {severityColor}; padding: 16px;">
-  <h2>🚨 META WATCH — {severity}</h2>
-  <p><strong>Summary:</strong> {summary}</p>
-  <p><strong>Impact:</strong> {impact}</p>
-  <p><strong>Required Action:</strong> {action_required}</p>
-  <p><strong>Deadline:</strong> {deadline}</p>
-  <p><strong>Source:</strong> <a href="{url}">{url}</a></p>
-</div>
-```
+Implementation: `src/services/email/`
 
 ## Merged events
 
-When an event is merged from multiple sources (see
-[05 · Deduplication](./05-deduplication.md)), the notification lists all reporting sources
-under a **"Reported by"** section and shows a combined confidence.
+Notifications list all `reportedBy` sources and show combined confidence.
 
 ## Delivery & idempotency
 
-- `Alerts.sentSlack` and `Alerts.sentEmail` start `false`.
-- After a successful send, set the corresponding flag to `true`.
-- A retry only sends to channels still marked `false`, so re-runs never double-notify.
+- `Alerts.sentSlack` / `sentEmail` start `false`.
+- After successful send → set `true`.
+- Retries only send to channels still `false`.
+- Pending delivery filters out channels that are globally disabled.
 
-## Implementation notes
+Implementation: `src/processors/formatter/deliverAlerts.ts`
 
-- Slack formatter + sender: `src/services/slack/`.
-- Email formatter + sender: `src/services/email/`.
-- Shared message-building logic: `src/processors/formatter/`.
+## When Slack fires
+
+Slack sends at the **end of each poll cycle** when:
+1. A new relevant `Alert` exists with `sentSlack: false`
+2. `SLACK_WEBHOOK_URL` is set
+
+Typical latency: within **1–5 minutes** of ingestion (changelog polls can take ~2 min).

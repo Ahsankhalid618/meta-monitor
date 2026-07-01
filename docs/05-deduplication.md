@@ -5,36 +5,31 @@ Deduplication happens at **two levels**: per-article (before analysis) and per-e
 
 ## Level 1 — Article deduplication (pre-analysis)
 
-**Goal:** never analyze the same article twice; minimize Gemini cost.
+**Goal:** never analyze the same article twice; minimize Groq cost.
 
 For every collected `RawArticle`:
 
-1. Compute a **content hash** of the normalized content.
-2. Look up the article in the `Articles` table by **URL** and by **content hash**.
-3. If a match exists → **drop** the article (already seen).
-4. If new → insert it (`processed = false`) and continue down the pipeline.
+1. Compute a **content hash** of `rawContent ?? title`.
+2. Look up by **URL** and **content hash** in `Articles`.
+3. If match exists → **drop** (duplicate).
+4. If new → insert (`processed = false`) and continue.
 
-This directly satisfies the requirement:
+Implementation: `src/services/deduplication/index.ts`
 
-> It stores every processed article URL and content hash in the database to guarantee that
-> the same event is never analyzed twice.
+## Level 2 — Event deduplication / merging (post-classification)
 
-## Level 2 — Event deduplication / merging (post-analysis)
+**Problem:** multiple sources report the same Meta announcement.
 
-**Problem:** many websites report the same Meta announcement. We don't want to fire five
-alerts for one event.
-
-After Gemini marks an article **relevant**, compare it against recent relevant events using:
-
-- **Article title similarity**
-- **Gemini summary similarity**
-- **Source URL overlap**
+After Groq marks an article **relevant**, compare against recent alerts using title +
+summary **string similarity**.
 
 ### Merge rule
 
-> If similarity **> 90%** → **merge into one event.**
+> If similarity **> 90%** (`SIMILARITY_THRESHOLD`) → **merge into one event.**
 
-The merged event records **all reporting sources** rather than duplicating the alert.
+Merged events append to `reportedBy[]` and do **not** re-notify Slack.
+
+Implementation: `src/services/deduplication/eventDedup.ts`
 
 ### Example merged event
 
@@ -42,35 +37,20 @@ The merged event records **all reporting sources** rather than duplicating the a
 One Meta Event
 
 Reported by
-  Facebook Developers
-  Engineering at Meta
-  360dialog
-  Reddit
+  Meta for Developers Blog
+  Graph API Changelog
 
 Confidence
   99%
 ```
 
-## Similarity computation (suggested)
-
-| Signal | Method |
-|--------|--------|
-| Title similarity | Normalized string similarity (e.g. token-set / Jaccard / cosine). |
-| Summary similarity | Embedding cosine similarity or text-similarity on Gemini `summary`. |
-| URL overlap | Canonical host/path comparison; same canonical URL = strong match. |
-
-Combine the signals into a single score; if the score exceeds the **0.90** threshold,
-treat the new article as another report of an existing event.
-
 ## Outcomes
 
-- **New event** → create `Alert`, then notify (Slack + Email).
-- **Merge** → attach the new source to the existing event; do **not** re-notify (or send a
-  lightweight "also reported by …" update, per team preference).
+- **New event** → create `Alert`, notify Slack.
+- **Merge** → attach source to existing alert; no duplicate Slack message.
 
 ## Implementation notes
 
-- Lives in `src/services/deduplication/`.
-- Level 1 runs in the collection path; Level 2 runs right before notification.
-- Keep a configurable similarity threshold (default `0.90`).
-- Store the list of reporting sources with the alert for the "Reported by" section.
+- Level 1: collection path, before extract/classify.
+- Level 2: after classification, before notification.
+- Threshold configurable via `SIMILARITY_THRESHOLD` (default `0.90`).

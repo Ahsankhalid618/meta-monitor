@@ -1,92 +1,85 @@
 # 08 · Tech Stack
 
-## Chosen stack (v1)
+## Chosen stack (v1 — shipped)
 
 | Component | Technology |
 |-----------|------------|
 | Language | TypeScript |
 | Runtime | Node.js 22 |
-| Framework | **Express** (lean — health check + a few admin endpoints) |
-| Scheduler | node-cron |
-| Database | PostgreSQL (Prisma ORM) |
-| HTTP fetching | undici (built into Node) |
+| Framework | **Express** (health + admin endpoints) |
+| Scheduler | node-cron (every minute) |
+| Database | PostgreSQL + Prisma 7 (`@prisma/adapter-pg`) |
+| HTTP fetching | Node fetch (undici) |
 | RSS Parsing | rss-parser |
-| GitHub source | @octokit/rest (Issues / Discussions / Releases) |
+| Changelog | Custom HTML collector (regex + fetch) |
 | HTML Extraction | @mozilla/readability + JSDOM |
-| JSON validation | Zod (validate Gemini output) |
-| Dedup similarity | string-similarity (titles/summaries) |
-| AI | Gemini API |
+| JSON validation | Zod |
+| Dedup similarity | string-similarity |
+| AI | **Groq API** (`llama-3.3-70b-versatile`) |
 | Slack | Incoming Webhooks |
-| Email | Resend |
-| Deployment | Railway |
+| Email | Resend (optional, disabled in v1 prod) |
+| Deployment | **Railway** |
 | Logging | Pino |
 
-### Deferred to v2 (not in v1)
+### Deferred to v2
 
 | Component | Technology | Why deferred |
 |-----------|------------|--------------|
-| Queue | BullMQ + Redis | ~5-min polling of a few sources doesn't need a queue. Add only if Gemini rate limits or volume force decoupling. |
-| Frontend | Next.js dashboard | Product is push-based (Slack + Email). See [decision below](#why-no-frontend-in-v1). |
-| Embedding dedup | Gemini embeddings | Only if title/summary string similarity proves inaccurate. |
+| Queue | BullMQ + Redis | Current volume doesn't require it |
+| Frontend | Next.js dashboard | Push-based product; Slack is the UI |
+| Reddit/GitHub collectors | — | v1 focused on official Meta sources |
+| Gemini | — | Replaced by Groq (free tier, no quota block) |
 
 ## Rationale
 
-- **TypeScript + Node.js 22** — strong typing for the article/alert contracts; modern LTS runtime.
-- **Express (not NestJS)** — this app is a **background worker driven by cron**, not an
-  HTTP API. NestJS's modules/DI/decorators add a learning curve and ceremony that buy little
-  here. Express gives us a `/health` check and a couple of admin endpoints with near-zero
-  overhead; the cron worker remains the heart of the app. Migrating later is cheap if needed.
-- **node-cron** — simple in-process scheduling for the ~5-minute poll cycle.
-- **PostgreSQL + Prisma** — relational integrity for Sources → Articles → Alerts, with
-  type-safe queries and migrations.
-- **undici** — Node's built-in fetch client for downloading article HTML.
-- **rss-parser** — robust RSS/Atom parsing for the bulk of sources.
-- **@octokit/rest** — typed GitHub access for the `github/` collector.
-- **@mozilla/readability + JSDOM** — extract clean, readable article text from HTML when the
-  feed lacks full content.
-- **Zod** — strictly validate Gemini's JSON output. The whole system depends on Gemini
-  returning well-formed JSON, so we parse defensively and reject/repair anything off-schema.
-- **string-similarity** — cheap title/summary comparison for event deduplication; upgrade to
-  embeddings only if accuracy demands it.
-- **Gemini API** — the classification engine (acts as Senior Platform Engineer).
-- **Slack Incoming Webhooks** — zero-friction channel delivery.
-- **Resend** — simple transactional HTML email.
-- **Railway** — straightforward deployment with managed Postgres + always-on worker hosting.
-- **Pino** — fast structured JSON logging for observability.
+- **Express over NestJS** — cron worker with minimal HTTP surface.
+- **Groq over Gemini** — reliable free-tier API; OpenAI-compatible JSON mode.
+- **Keyword gate** — reduces Groq calls on noisy developer blog posts.
+- **Changelog HTML collector** — Graph API breaking changes aren't in RSS.
+- **Railway** — managed Postgres + always-on Node worker.
 
 ## Why no frontend in v1
 
-This is intentional, not a shortcut:
+The product is **push-based**. Value is Slack alerts, not a dashboard you log into.
+Source config via seed file / Prisma Studio / DB rows.
 
-- **The product is push-based.** Its entire value is delivering alerts to where engineers
-  already are — **Slack and Email**. A dashboard you have to log into to "check for Meta
-  changes" defeats the purpose.
-- **Source config is low-frequency admin work.** Manage the `Sources` table via a seed file,
-  Prisma Studio, or 2–3 tiny Express admin endpoints — no SPA required.
-- **A frontend adds cost for little value now** — auth, hosting, and maintenance with almost
-  no user benefit at this stage.
-
-A frontend becomes worthwhile in **v2** if we want an alert-history/audit dashboard, a
-source-management UI for non-technical admins, or a view into Gemini's `reasoning` /
-`confidence` for tuning. At that point a lightweight **Next.js** app reading the same
-Postgres DB is the natural choice — built *after* the core pipeline works.
-
-## Environment variables (expected)
+## Environment variables
 
 | Variable | Purpose |
 |----------|---------|
 | `DATABASE_URL` | PostgreSQL connection string |
-| `GEMINI_API_KEY` | Gemini API authentication |
-| `SLACK_WEBHOOK_URL` | Slack Incoming Webhook endpoint |
-| `RESEND_API_KEY` | Resend email API key |
-| `ALERT_EMAIL_TO` | Destination email address(es) |
-| `POLL_INTERVAL` | Default poll interval (seconds) |
-| `SIMILARITY_THRESHOLD` | Event-merge threshold (default `0.90`) |
-| `GITHUB_TOKEN` | (optional) raises GitHub API rate limits for the `github/` collector |
-| `LOG_LEVEL` | Pino log level |
-| `REDIS_URL` | **v2 only** — BullMQ / Redis connection (not used in v1) |
+| `DATABASE_SSL` | `true` for Railway/Heroku TLS |
+| `GROQ_API_KEY` | Groq API authentication |
+| `GROQ_MODEL` | Default `llama-3.3-70b-versatile` |
+| `LLM_CLASSIFY_BATCH` | Max articles per classify run (default `1`) |
+| `LLM_CLASSIFY_DELAY_MS` | Delay between Groq calls (default `2000`) |
+| `LLM_CLASSIFY_INTERVAL_MS` | Backlog classify interval (default `300000`) |
+| `LLM_MAX_CONTENT_CHARS` | Max chars per article (default `4000`) |
+| `LLM_QUOTA_COOLDOWN_MS` | Pause after 429 (default `900000`) |
+| `SLACK_WEBHOOK_URL` | Slack Incoming Webhook |
+| `RESEND_API_KEY` | Optional — email |
+| `ALERT_EMAIL_TO` | Optional — email recipients |
+| `ALERT_EMAIL_FROM` | Must be verified domain (not Gmail) |
+| `SIMILARITY_THRESHOLD` | Event merge threshold (default `0.90`) |
+| `PORT` | HTTP port (Railway injects automatically) |
+| `NODE_ENV` | `production` on Railway |
+| `LOG_LEVEL` | Pino level (default `info`) |
+| `GITHUB_TOKEN` | Optional — future GitHub collector |
+
+See `.env.example` for a template.
+
+## Railway deploy commands
+
+**Build:**
+```bash
+pnpm install --frozen-lockfile && pnpm prisma:generate && pnpm build
+```
+
+**Start:**
+```bash
+pnpm exec prisma migrate deploy && pnpm db:seed && pnpm start
+```
 
 ## Versioning
 
-Pin dependencies in `package.json` and install latest stable via the package manager rather
-than hand-writing versions. Use Prisma migrations for all schema changes.
+Pin dependencies in `pnpm-lock.yaml`. All schema changes via Prisma migrations.
