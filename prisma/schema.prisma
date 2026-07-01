@@ -13,6 +13,7 @@ enum SourceType {
   github
   feedly
   status
+  changelog
 }
 
 enum Severity {

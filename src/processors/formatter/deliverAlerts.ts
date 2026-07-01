@@ -34,10 +34,16 @@ export async function deliverPendingAlerts(): Promise<DeliveryResult> {
     logger.warn("SLACK_WEBHOOK_URL not set; skipping Slack delivery");
   }
   if (result.emailSkipped) {
-    logger.warn("RESEND_API_KEY or ALERT_EMAIL_TO not set; skipping email");
+    logger.warn(
+      "Email delivery disabled (missing Resend config or unverified From domain)",
+    );
   }
 
-  const pending = await getAlertsPendingDelivery();
+  const pending = (await getAlertsPendingDelivery()).filter(
+    (alert) =>
+      (!alert.sentSlack && !result.slackSkipped) ||
+      (!alert.sentEmail && !result.emailSkipped),
+  );
   result.attempted = pending.length;
 
   if (pending.length === 0) return result;

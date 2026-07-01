@@ -17,8 +17,27 @@ function getResend(): Resend | null {
   return resend;
 }
 
+/** Resend requires a verified custom domain — not @gmail.com etc. */
+const UNVERIFIABLE_FROM_DOMAINS = [
+  "@gmail.com",
+  "@googlemail.com",
+  "@yahoo.com",
+  "@hotmail.com",
+  "@outlook.com",
+];
+
 export function isEmailConfigured(): boolean {
-  return Boolean(config.RESEND_API_KEY && config.ALERT_EMAIL_TO);
+  if (!config.RESEND_API_KEY || !config.ALERT_EMAIL_TO) return false;
+
+  const from = config.ALERT_EMAIL_FROM.toLowerCase();
+  if (
+    !from.includes("@") ||
+    UNVERIFIABLE_FROM_DOMAINS.some((d) => from.endsWith(d))
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function parseRecipients(to: string): string[] {

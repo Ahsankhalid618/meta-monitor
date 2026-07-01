@@ -12,6 +12,7 @@ import {
 import { logger } from "../../utils/logger.js";
 import { isLlmRateLimitError, sleep } from "../../utils/retry.js";
 import { config } from "../../config/index.js";
+import { isLikelyInstagramApiRelated } from "../../services/llm/keywordGate.js";
 
 let classifying = false;
 
@@ -88,6 +89,23 @@ export async function classifyPendingArticles(
     for (const article of pending) {
       const content = article.content;
       if (!content) continue;
+
+      if (
+        !isLikelyInstagramApiRelated({
+          title: article.title,
+          content,
+          url: article.url,
+          sourceName: article.source.name,
+        })
+      ) {
+        logger.info(
+          { url: article.url },
+          "Skipped Groq (no Instagram API keywords)",
+        );
+        await markArticleProcessed(article.id);
+        result.processed += 1;
+        continue;
+      }
 
       try {
         const classification = await classifyArticle({
