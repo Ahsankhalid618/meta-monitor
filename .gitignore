@@ -9,7 +9,8 @@ dist/
 prisma/*.db
 prisma/*.db-journal
 src/generated/
-branch_structure.json
-temp_auto_push.bat
-temp_interactive_push.bat
 .gitignore
+
+.env.*.local
+.env.production
+.env.development
